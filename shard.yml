@@ -1,0 +1,20 @@
+name: speech
+version: 0.1.0
+
+authors:
+  - kojix2 <2xijok@gmail.com>
+
+targets:
+  speech:
+    main: src/speech.cr
+
+dependencies:
+  uing:
+    github: kojix2/uing
+  openai:
+    github: kojix2/crystal-openai
+    branch: speech
+
+crystal: '>= 1.17.1'
+
+license: MIT
