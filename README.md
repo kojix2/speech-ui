@@ -45,8 +45,8 @@ Prerequisites: Crystal, OpenAI API key, playback tool (macOS: afplay, Linux: mpg
 ```bash
 shards install
 export OPENAI_API_KEY="your-api-key"
-crystal build src/speech.cr
-./speech
+shards build --release -Dpreview_mt
+bin/speech
 ```
 
 ## Usage

@@ -15,7 +15,7 @@ module Speech
         exit(1)
       end
 
-      @window = UIng::Window.new("Text-to-Speech App", 800, 600)
+      @window = UIng::Window.new("Text-to-Speech App", 600, 600, margined: true)
       @text_entry = UIng::MultilineEntry.new
       @speak_button = UIng::Button.new("Generate & Play")
       @voice_combo = UIng::Combobox.new
@@ -26,7 +26,6 @@ module Speech
       @save_button = UIng::Button.new("Choose…")
       @save_button.disable
       @save_path = nil.as(String?)
-      @status_label = UIng::Label.new("Enter text and press the button")
 
       setup_voices
       setup_models
@@ -80,10 +79,9 @@ module Speech
       text_group.child = tg_box
       tg_box.append(@text_entry, stretchy: true)
 
-      # Action / Status
-      action_box = UIng::Box.new(:vertical, padded: true)
+      # Action box (no status bar)
+      action_box = UIng::Box.new(:horizontal, padded: true)
       action_box.append(@speak_button, stretchy: false)
-      action_box.append(@status_label, stretchy: true)
       root.append(action_box, stretchy: false)
 
       @window.child = root
@@ -116,9 +114,6 @@ module Speech
             path = path + ".#{fmt}"
           end
           @save_path = path
-          @status_label.text = "Save path: #{path}"
-        else
-          @status_label.text = "No save path"
         end
       end
     end
@@ -126,21 +121,15 @@ module Speech
     private def generate_and_play_speech
       text = @text_entry.text
       if text.nil? || text.empty?
-        @status_label.text = "Please enter text"
+        @window.msg_box("Error", "Please enter text to synthesize.")
         return
       end
 
-      @status_label.text = "Generating audio..."
-      @speak_button.disable
-
-      begin
+      spawn do
         audio_file = generate_speech(text)
         play_audio(audio_file, keep: keep_file?)
-        @status_label.text = "Playback finished"
       rescue ex
-        @status_label.text = "Error: #{ex.message}"
-      ensure
-        @speak_button.enable
+        @window.msg_box("Error", "#{ex.message}")
       end
     end
 
@@ -150,8 +139,6 @@ module Speech
       fmt = current_format
       instructions = (@instructions_entry.text || "").strip
       instructions = nil if instructions.empty?
-
-      @status_label.text = "Sending request (model=#{model}, voice=#{voice}, format=#{fmt})"
 
       client = openai_client
       req = OpenAI::SpeechRequest.new(
@@ -166,17 +153,15 @@ module Speech
       temp = File.tempfile("speech", suffix: ".#{fmt}")
       saved_path = temp.path
       begin
-        bytes = IO.copy(io, temp)
+        IO.copy(io, temp)
         temp.flush
-        @status_label.text = "Download complete (#{(bytes / 1024.0).round(1)} KB)"
 
         if keep_file? && (dest = @save_path)
           begin
             File.write(dest, File.read(temp.path))
             saved_path = dest
-            @status_label.text = "Saved: #{dest}"
           rescue ex
-            @status_label.text = "Save failed: #{ex.message} (playing temp file)"
+            @window.msg_box("Save Failed", ex.message.to_s)
           end
         end
         saved_path
