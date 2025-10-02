@@ -1,6 +1,7 @@
 require "uing"
 require "json"
 require "openai"
+require "log"
 
 module Speech
   VERSION = "0.1.0"
@@ -8,6 +9,8 @@ module Speech
   # Simple OpenAI Text-To-Speech GUI wrapper.
   # Provides voice/model/format selection, optional instructions and file saving.
   class TTSApp
+    Log = ::Log.for("TTSApp")
+
     # Available voice options
     VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer"]
 
@@ -16,6 +19,9 @@ module Speech
 
     # Available format options
     FORMATS = ["mp3", "wav", "pcm", "opus", "flac", "aac"]
+
+    @audio_process : Process?
+    @current_fiber : Fiber?
 
     def initialize
       @api_key = ENV["OPENAI_API_KEY"]?
@@ -34,6 +40,9 @@ module Speech
       @instructions_entry = UIng::Entry.new
       @status_label = UIng::Label.new("Ready")
       @progress_bar = UIng::ProgressBar.new
+      @is_playing = false
+      @audio_process = nil
+      @current_fiber = nil
 
       setup_voices
       setup_models
@@ -96,7 +105,11 @@ module Speech
       end
 
       @play_button.on_clicked do
-        generate_and_play_speech
+        if @is_playing
+          stop_audio
+        else
+          generate_and_play_speech
+        end
       end
 
       @save_button.on_clicked do
@@ -111,31 +124,60 @@ module Speech
         return
       end
 
-      # Update UI state
-      @play_button.disable
+      Log.info { "Starting generate_and_play_speech" }
+
+      # Stop any current fiber
+      if @current_fiber
+        Log.info { "Stopping current fiber" }
+        @current_fiber = nil
+      end
+
+      # Prevent multiple concurrent executions
+      if @is_playing
+        Log.warn { "Already playing, ignoring request" }
+        return
+      end
+
+      # Update UI state immediately
+      @is_playing = true
+      @play_button.text = "Stop"
       @save_button.disable
       @status_label.text = "Generating speech..."
-      @progress_bar.value = -1 # Indeterminate progress
+      @progress_bar.value = -1
 
-      spawn do
-        stream = generate_speech(text)
-        @status_label.text = "Playing audio..."
+      Log.info { "Starting new fiber" }
+      @current_fiber = spawn do
+        Log.info { "Inside fiber, generating speech" }
 
-        # Play only
-        play_audio_stream(stream)
+        begin
+          stream = generate_speech(text)
+          Log.info { "Generated speech successfully" }
 
-        # Reset to ready state
-        @status_label.text = "Ready"
-        @progress_bar.value = 0
-        @play_button.enable
-        @save_button.enable
-      rescue ex
-        @status_label.text = "Error occurred"
-        @progress_bar.value = 0
-        @play_button.enable
-        @save_button.enable
-        @window.msg_box("Error", "#{ex.message}")
+          # Check if we should continue
+          unless @is_playing
+            Log.info { "Cancelled, exiting fiber" }
+            reset_to_ready_state
+            next
+          end
+
+          @status_label.text = "Playing audio..."
+          @audio_process = play_audio_stream(stream)
+
+          if process = @audio_process
+            Log.info { "Waiting for audio to complete" }
+            process.wait
+            Log.info { "Audio completed" }
+          end
+
+          Log.info { "Resetting to ready state" }
+          reset_to_ready_state
+        rescue ex
+          Log.error(exception: ex) { "Error in fiber" }
+          cleanup_and_reset_error(ex)
+        end
       end
+
+      Log.info { "Fiber started" }
     end
 
     private def generate_and_save_speech
@@ -188,13 +230,19 @@ module Speech
     end
 
     private def generate_speech(text : String) : IO
+      Log.info { "generate_speech called with text length: #{text.size}" }
       voice = current_voice
       model = current_model
       fmt = current_format
       instructions = (@instructions_entry.text || "").strip
       instructions = nil if instructions.empty?
 
+      Log.info { "Voice: #{voice}, Model: #{model}, Format: #{fmt}" }
+      Log.info { "Instructions: #{instructions.inspect}" }
+
       client = openai_client
+      Log.info { "OpenAI client obtained: #{client.class}" }
+
       req = OpenAI::SpeechRequest.new(
         model,
         text,
@@ -202,8 +250,11 @@ module Speech
         instructions: instructions,
         response_format: fmt
       )
+      Log.info { "SpeechRequest created, calling client.speech" }
 
       io = client.speech(req) # Returns IO stream containing audio binary data
+      Log.info { "client.speech completed, returning IO: #{io.class}" }
+      io
     end
 
     private def current_voice
@@ -218,19 +269,77 @@ module Speech
       FORMATS[@format_combo.selected]
     end
 
-    private def play_audio_stream(stream : IO)
+    private def play_audio_stream(stream : IO) : Process?
       # Stream audio playback only
       {% if flag?(:darwin) %}
-        Process.run("afplay", args: ["-"], input: stream)
+        Process.new("afplay", args: ["-"], input: stream)
       {% elsif flag?(:linux) %}
-        Process.run("ffplay", args: ["-nodisp", "-autoexit", "-"], input: stream)
+        Process.new("ffplay", args: ["-nodisp", "-autoexit", "-"], input: stream)
       {% else %}
         puts "Audio playback is not supported on this platform"
+        nil
       {% end %}
     end
 
+    private def stop_audio
+      Log.info { "stop_audio called" }
+
+      @is_playing = false
+
+      # Stop current fiber
+      @current_fiber = nil
+
+      # Stop audio process if running
+      if process = @audio_process
+        Log.info { "Terminating audio process" }
+        begin
+          process.terminate unless process.terminated?
+          sleep(50.milliseconds)
+          process.signal(Signal::KILL) unless process.terminated?
+        rescue ex
+          Log.warn(exception: ex) { "Process cleanup error (ignored)" }
+        ensure
+          @audio_process = nil
+        end
+      end
+
+      reset_to_ready_state
+      Log.info { "stop_audio completed" }
+    end
+
+    private def reset_to_ready_state
+      Log.info { "Resetting to ready state" }
+      @is_playing = false
+      @play_button.text = "Play"
+      @status_label.text = "Ready"
+      @progress_bar.value = 0
+    end
+
+    private def cleanup_and_reset_error(ex)
+      Log.warn(exception: ex) { "cleanup_and_reset_error called" }
+
+      # Clean up process
+      if process = @audio_process
+        process.terminate rescue nil
+        @audio_process = nil
+      end
+
+      # Reset UI
+      @status_label.text = "Error occurred"
+      @progress_bar.value = 0
+      @is_playing = false
+      @play_button.text = "Play"
+      @play_button.enable
+      @save_button.enable
+      @current_fiber = nil
+
+      @window.msg_box("Error", "#{ex.message}")
+      Log.info { "Error cleanup complete" }
+    end
+
     private def openai_client
-      @client ||= OpenAI::Client.new(@api_key)
+      # Create a new client each time to avoid connection issues
+      OpenAI::Client.new(@api_key)
     end
 
     def show
