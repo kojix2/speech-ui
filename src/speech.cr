@@ -311,6 +311,8 @@ module Speech
       Log.info { "Resetting to ready state" }
       @is_playing = false
       @play_button.text = "Play"
+      @play_button.enable
+      @save_button.enable
       @status_label.text = "Ready"
       @progress_bar.value = 0
     end
