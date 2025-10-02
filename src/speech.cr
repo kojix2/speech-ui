@@ -24,7 +24,7 @@ module Speech
         exit(1)
       end
 
-      @window = UIng::Window.new("Text-to-Speech App", 600, 600, margined: true)
+      @window = UIng::Window.new("Text-to-Speech App", 600, 500, margined: true)
       @text_entry = UIng::MultilineEntry.new
       @speak_button = UIng::Button.new("Generate & Play")
       @voice_combo = UIng::Combobox.new
@@ -35,6 +35,9 @@ module Speech
       @save_button = UIng::Button.new("Choose…")
       @save_button.disable
       @save_path = nil.as(String?)
+      @status_label = UIng::Label.new("Ready")
+      @save_path_label = UIng::Label.new("")
+      @progress_bar = UIng::ProgressBar.new
 
       setup_voices
       setup_models
@@ -78,6 +81,9 @@ module Speech
       save_box.append(@save_button, stretchy: false)
       form.append("Save", save_box)
 
+      # Save path display
+      form.append("Save Path", @save_path_label)
+
       # Text group
       text_group = UIng::Group.new("Text", margined: false)
       root.append(text_group, stretchy: true)
@@ -85,9 +91,11 @@ module Speech
       text_group.child = tg_box
       tg_box.append(@text_entry, stretchy: true)
 
-      # Action box (no status bar)
+      # Action box with progress bar
       action_box = UIng::Box.new(:horizontal, padded: true)
       action_box.append(@speak_button, stretchy: false)
+      action_box.append(@progress_bar, stretchy: true)
+      action_box.append(@status_label, stretchy: false)
       root.append(action_box, stretchy: false)
 
       @window.child = root
@@ -120,6 +128,7 @@ module Speech
             path = path + ".#{fmt}"
           end
           @save_path = path
+          @save_path_label.text = File.basename(path)
         end
       end
     end
@@ -131,10 +140,33 @@ module Speech
         return
       end
 
+      # Update UI state
+      @speak_button.disable
+      @status_label.text = "Generating speech..."
+      @progress_bar.value = -1 # Indeterminate progress
+
       spawn do
         stream = generate_speech(text)
-        play_audio(stream, keep: keep_file?)
+        @status_label.text = "Playing audio..."
+
+        keep = keep_file?
+
+        if keep && @save_path
+          # Play while saving to file
+          play_and_save_audio(stream, @save_path.not_nil!)
+        else
+          # Play only
+          play_audio_stream(stream)
+        end
+
+        # Reset to ready state
+        @status_label.text = "Ready"
+        @progress_bar.value = 0
+        @speak_button.enable
       rescue ex
+        @status_label.text = "Error occurred"
+        @progress_bar.value = 0
+        @speak_button.enable
         @window.msg_box("Error", "#{ex.message}")
       end
     end
@@ -155,7 +187,7 @@ module Speech
         response_format: fmt
       )
 
-      io = client.speech(req) # IO (audio binary)
+      io = client.speech(req) # Returns IO stream containing audio binary data
     end
 
     private def keep_file? : Bool
@@ -174,15 +206,35 @@ module Speech
       FORMATS[@format_combo.selected]
     end
 
-    private def play_audio(stream : IO, keep : Bool)
-      # Play audio (macOS: afplay, Linux: mpg123/aplay)
+    private def play_audio_stream(stream : IO)
+      # Stream audio playback only
       {% if flag?(:darwin) %}
-        Process.run("afplay", input: stream)
+        Process.run("afplay", args: ["-"], input: stream)
       {% elsif flag?(:linux) %}
-        Process.run("ffplay", args: ["-i", "-"], input: stream)
+        Process.run("ffplay", args: ["-nodisp", "-autoexit", "-"], input: stream)
       {% else %}
         puts "Audio playback is not supported on this platform"
       {% end %}
+    end
+
+    private def play_and_save_audio(stream : IO, save_path : String)
+      # Stream audio playback while saving to file
+      File.open(save_path, "w") do |save_file|
+        {% if flag?(:darwin) %}
+          Process.run("afplay", args: ["-"]) do |process|
+            multi_writer = IO::MultiWriter.new(save_file, process.input)
+            IO.copy(stream, multi_writer)
+          end
+        {% elsif flag?(:linux) %}
+          Process.run("ffplay", args: ["-nodisp", "-autoexit", "-"]) do |process|
+            multi_writer = IO::MultiWriter.new(save_file, process.input)
+            IO.copy(stream, multi_writer)
+          end
+        {% else %}
+          puts "Audio playback is not supported on this platform"
+          IO.copy(stream, save_file)
+        {% end %}
+      end
     end
 
     private def openai_client
