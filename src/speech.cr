@@ -132,14 +132,14 @@ module Speech
       end
 
       spawn do
-        audio_file = generate_speech(text)
-        play_audio(audio_file, keep: keep_file?)
+        stream = generate_speech(text)
+        play_audio(stream, keep: keep_file?)
       rescue ex
         @window.msg_box("Error", "#{ex.message}")
       end
     end
 
-    private def generate_speech(text : String) : String
+    private def generate_speech(text : String) : IO
       voice = current_voice
       model = current_model
       fmt = current_format
@@ -156,30 +156,6 @@ module Speech
       )
 
       io = client.speech(req) # IO (audio binary)
-      temp = File.tempfile("speech", suffix: ".#{fmt}")
-      saved_path = temp.path
-      begin
-        IO.copy(io, temp)
-        temp.flush
-
-        if keep_file? && (dest = @save_path)
-          begin
-            File.write(dest, File.read(temp.path))
-            saved_path = dest
-          rescue ex
-            @window.msg_box("Save Failed", ex.message.to_s)
-          end
-        end
-        saved_path
-      rescue ex
-        begin
-          File.delete(temp.path) if File.exists?(temp.path)
-        rescue
-        end
-        raise ex
-      ensure
-        temp.close
-      end
     end
 
     private def keep_file? : Bool
@@ -198,23 +174,15 @@ module Speech
       FORMATS[@format_combo.selected]
     end
 
-    private def play_audio(file_path : String, keep : Bool)
+    private def play_audio(stream : IO, keep : Bool)
       # Play audio (macOS: afplay, Linux: mpg123/aplay)
       {% if flag?(:darwin) %}
-        Process.run("afplay", [file_path])
+        Process.run("afplay", input: stream)
       {% elsif flag?(:linux) %}
-        Process.run("mpg123", [file_path]) rescue Process.run("aplay", [file_path])
+        Process.run("ffplay", args: ["-i", "-"], input: stream)
       {% else %}
         puts "Audio playback is not supported on this platform"
       {% end %}
-
-      # Remove temp file if not saved
-      unless keep && @save_path == file_path
-        begin
-          File.delete(file_path) if File.exists?(file_path)
-        rescue
-        end
-      end
     end
 
     private def openai_client
