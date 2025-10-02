@@ -8,6 +8,15 @@ module Speech
   # Simple OpenAI Text-To-Speech GUI wrapper.
   # Provides voice/model/format selection, optional instructions and file saving.
   class TTSApp
+    # Available voice options
+    VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer"]
+
+    # Available model options
+    MODELS = ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"]
+
+    # Available format options
+    FORMATS = ["mp3", "wav", "pcm", "opus", "flac", "aac"]
+
     def initialize
       @api_key = ENV["OPENAI_API_KEY"]?
       if @api_key.nil? || @api_key.try(&.empty?)
@@ -35,20 +44,17 @@ module Speech
     end
 
     private def setup_voices
-      voices = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer"]
-      voices.each { |voice| @voice_combo.append(voice) }
+      VOICES.each { |voice| @voice_combo.append(voice) }
       @voice_combo.selected = 0
     end
 
     private def setup_models
-      models = ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"]
-      models.each { |m| @model_combo.append(m) }
+      MODELS.each { |m| @model_combo.append(m) }
       @model_combo.selected = 0
     end
 
     private def setup_formats
-      formats = ["mp3", "wav", "pcm", "opus", "flac", "aac"]
-      formats.each { |f| @format_combo.append(f) }
+      FORMATS.each { |f| @format_combo.append(f) }
       @format_combo.selected = 0
     end
 
@@ -181,15 +187,15 @@ module Speech
     end
 
     private def current_voice
-      ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer"][@voice_combo.selected]
+      VOICES[@voice_combo.selected]
     end
 
     private def current_model
-      ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"][@model_combo.selected]
+      MODELS[@model_combo.selected]
     end
 
     private def current_format
-      ["mp3", "wav", "pcm", "opus", "flac", "aac"][@format_combo.selected]
+      FORMATS[@format_combo.selected]
     end
 
     private def play_audio(file_path : String, keep : Bool)
@@ -211,7 +217,6 @@ module Speech
       end
     end
 
-    # OpenAI::Client を毎回再生成しない
     private def openai_client
       @client ||= OpenAI::Client.new(@api_key)
     end
