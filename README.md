@@ -11,14 +11,19 @@ A Crystal GUI application using the OpenAI Text-to-Speech API. Enter text, choos
 - Multiple audio output formats (mp3, wav, pcm, opus, flac, aac)
 - Optional instruction prompt to change tone / style
 - Save-to-file option with custom path
-- Simple, compact cross‑platform GUI (macOS / Linux playback helpers)
+- Simple, compact cross‑platform GUI using VLC (libVLC) for playback
 
 ## Prerequisites
 
 1. Crystal language installed
 2. OpenAI API key (https://platform.openai.com/api-keys)
-3. macOS: `afplay` available (default pre-installed)
-4. Linux: one of `mpg123` or `aplay` installed for playback
+3. VLC (libVLC) runtime installed
+
+Examples to install libVLC:
+- Ubuntu/Debian: `sudo apt install vlc libvlc-dev`
+- Fedora: `sudo dnf install vlc vlc-devel`
+- Arch: `sudo pacman -S vlc`
+- macOS (Homebrew): `brew install vlc`
 
 ## Install dependencies
 
@@ -40,7 +45,7 @@ Minimal Crystal GUI for OpenAI Text-to-Speech. Type text, pick voice / model / f
 * Optional instructions & save-to-file
 
 ## Quick Start
-Prerequisites: Crystal, OpenAI API key, playback tool (macOS: afplay, Linux: mpg123 or aplay).
+Prerequisites: Crystal, OpenAI API key, VLC (libVLC) installed.
 
 ```bash
 shards install
@@ -57,6 +62,7 @@ bin/speech
 5. Click "Generate & Play"
 
 ## Notes
+* Playback uses VLC (libVLC). Ensure libVLC is installed and linkable on your system.
 * Disclose to users the voice is AI-generated
 * API usage may incur cost
 * Requires internet

@@ -14,6 +14,8 @@ dependencies:
   openai:
     github: kojix2/crystal-openai
     branch: speech
+  vlc:
+    github: kojix2/vlc.cr
 
 crystal: '>= 1.17.1'
 
