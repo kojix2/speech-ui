@@ -1,14 +1,14 @@
 require "vlc"
 
 module Speech
-  # libVLC を使った簡易オーディオプレイヤー
-  # 1) ファイルパスを指定して再生
-  # 2) 停止と終了待ち、クリーンアップを提供
+  # Simple audio player using libVLC
+  # 1) Play by specifying a file path
+  # 2) Provide stop, wait-for-finish, and cleanup
   class VLCPlayer
     @instance : VLC::LibVLC::Instance*
     @player : VLC::LibVLC::MediaPlayer*
     @media : VLC::LibVLC::Media*?
-    # ストリーミング用のパイプ（libVLC に fd を渡す）
+    # Pipe for streaming (pass fd to libVLC)
     @pipe_reader : IO::FileDescriptor?
     @pipe_writer : IO::FileDescriptor?
 
@@ -28,9 +28,9 @@ module Speech
       VLC::LibVLC.play_media_player(@player)
     end
 
-    # HTTP レスポンス等の IO をストリーミング再生する
-    # 内部で pipe を作り、reader 側の fd を libVLC に渡して再生します。
-    # writer 側へは別 Fiber で逐次コピーします。
+    # Stream playback of IO such as HTTP responses
+    # Create an internal pipe and pass the reader fd to libVLC for playback.
+    # Copy to the writer side sequentially in a separate Fiber.
     def play_stream(source : IO)
       close_pipes
       cleanup_media
@@ -39,17 +39,17 @@ module Speech
       @pipe_reader = reader
       @pipe_writer = writer
 
-      # fd からメディアを作成して再生
+      # Create media from the fd and play
       @media = VLC::LibVLC.new_media_from_file_descriptor(@instance, reader.fd)
       VLC::LibVLC.set_media_player_media(@player, @media.not_nil!)
       VLC::LibVLC.play_media_player(@player)
 
-      # 別 Fiber で IO をパイプの writer に流し込む
+      # In another Fiber, pump IO into the pipe's writer
       spawn do
         begin
           IO.copy(source, writer)
         rescue ex
-          # 読み/書き中断などは無視（停止操作等）
+          # Ignore read/write interruption (e.g., stop operation)
         ensure
           begin
             writer.close
@@ -65,12 +65,12 @@ module Speech
 
     def stop
       VLC::LibVLC.stop_media_player(@player)
-      # パイプも閉じて読み側に EOF を伝える
+      # Close the pipe as well to signal EOF to the reader
       close_pipes
     end
 
     def wait_until_finished
-      # 再生終了・停止・エラーまで待機
+      # Wait until playback ends, stops, or errors out
       loop do
         st = state
         break if st == VLC::LibVLC::State::Ended || st == VLC::LibVLC::State::Stopped || st == VLC::LibVLC::State::Error
@@ -79,7 +79,7 @@ module Speech
     end
 
     def close
-      # プレイヤーとメディア、インスタンスの破棄
+      # Destroy player, media, and instance
       begin
         stop
       rescue

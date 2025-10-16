@@ -8,6 +8,10 @@ shards:
     git: https://github.com/spider-gazelle/json-schema.git
     version: 1.3.2
 
+  mpv:
+    git: https://github.com/kojix2/mpv.cr.git
+    version: 0.1.0+git.commit.6e33c7a2f1038f0d547b394d83cf992b39d4b07e
+
   openai:
     git: https://github.com/kojix2/crystal-openai.git
     version: 0.9.2+git.commit.cce79ea86932062762e2dcf4c845d7ed65b82e55
@@ -19,8 +23,4 @@ shards:
   uing:
     git: https://github.com/kojix2/uing.git
     version: 0.0.3
-
-  vlc:
-    git: https://github.com/kojix2/vlc.cr.git
-    version: 0.1.7+git.commit.4842bbcc539f9871632ee78ec78ca940a4180866
 

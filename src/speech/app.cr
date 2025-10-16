@@ -1,6 +1,7 @@
 require "uing"
 require "openai"
 require "log"
+require "./mpv_player"
 
 module Speech
   # Simple OpenAI Text-To-Speech GUI wrapper.
@@ -17,8 +18,7 @@ module Speech
     # Available format options
     FORMATS = ["mp3", "wav", "pcm", "opus", "flac", "aac"]
 
-    # libVLC プレイヤーと一時ファイルパス
-    @vlc_player : VLCPlayer?
+    @mpv_player : MPVPlayer?
     @temp_audio_path : String?
     @current_fiber : Fiber?
 
@@ -40,7 +40,7 @@ module Speech
       @status_label = UIng::Label.new("Ready")
       @progress_bar = UIng::ProgressBar.new
       @is_playing = false
-      @vlc_player = nil
+      @mpv_player = nil
       @temp_audio_path = nil
       @current_fiber = nil
 
@@ -160,24 +160,24 @@ module Speech
             next
           end
 
-          # VLC でストリーミング再生
+          # Stream playback with MPV
           @status_label.text = "Playing (streaming)..."
-          player = VLCPlayer.new
-          @vlc_player = player
+          player = MPVPlayer.new
+          @mpv_player = player
           player.play_stream(stream)
 
-          Log.info { "Waiting for VLC streaming playback to complete" }
+          Log.info { "Waiting for MPV streaming playback to complete" }
           player.wait_until_finished
-          Log.info { "VLC playback completed" }
+          Log.info { "MPV playback completed" }
 
           Log.info { "Resetting to ready state" }
-          # 片付け
+          # Cleanup
           begin
             player.close
           rescue ex2
-            Log.warn(exception: ex2) { "VLC close error (ignored)" }
+            Log.warn(exception: ex2) { "MPV close error (ignored)" }
           ensure
-            @vlc_player = nil
+            @mpv_player = nil
           end
 
           reset_to_ready_state
@@ -287,13 +287,13 @@ module Speech
       # Stop current fiber
       @current_fiber = nil
 
-      # Stop VLC playback if running（クローズは再生側で行う）
-      if player = @vlc_player
-        Log.info { "Stopping VLC player" }
+      # Stop MPV playback if running (closing happens on the playback side)
+      if player = @mpv_player
+        Log.info { "Stopping MPV player" }
         begin
           player.stop
         rescue ex
-          Log.warn(exception: ex) { "VLC stop error (ignored)" }
+          Log.warn(exception: ex) { "MPV stop error (ignored)" }
         end
       end
 
@@ -314,13 +314,13 @@ module Speech
     private def cleanup_and_reset_error(ex)
       Log.warn(exception: ex) { "cleanup_and_reset_error called" }
 
-      # Clean up VLC
-      if player = @vlc_player
+      # Clean up MPV
+      if player = @mpv_player
         begin
           player.stop
         rescue
         end
-        @vlc_player = nil
+        @mpv_player = nil
       end
 
       # Reset UI

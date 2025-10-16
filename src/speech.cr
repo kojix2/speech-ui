@@ -1,4 +1,4 @@
-require "./speech/vlc_player"
+require "./speech/mpv_player"
 require "./speech/app"
 
 module Speech

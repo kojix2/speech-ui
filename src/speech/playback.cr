@@ -13,11 +13,11 @@ module Speech
       abstract def close
     end
 
-    class VLCBackend < Backend
-      @player : VLCPlayer
+    class MPVBackend < Backend
+      @player : MPVPlayer
 
       def initialize
-        @player = VLCPlayer.new
+        @player = MPVPlayer.new
       end
 
       def play_file(path : String)
@@ -62,11 +62,11 @@ module Speech
     end
 
     def initialize
-      # まず libVLC を試す
+      # Try libmpv first
       @backend = begin
-        VLCBackend.new
+        MPVBackend.new
       rescue ex
-        Log.warn { "VLC(libvlc) init failed: #{ex.message}. Falling back to cvlc." }
+        Log.warn { "MPV(libmpv) init failed: #{ex.message}. Falling back to cvlc." }
         CVLCBackend.new
       end
     end
